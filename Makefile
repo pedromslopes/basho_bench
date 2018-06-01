@@ -44,6 +44,18 @@ clean:
 
 distclean: clean
 	@rm -rf basho_bench deps
+	
+all_bench:
+	sudo chmod u+x ./scripts/run_all_bench.sh
+	./scripts/run_all_bench.sh
+
+bench:
+	sudo chmod u+x ./scripts/run_aql_bench.sh
+	./scripts/run_aql_bench.sh
+
+all_results:
+	sudo chmod u+x ./scripts/all_results.sh
+	./scripts/all_results.sh
 
 results:
 	Rscript --vanilla priv/summary.r -i tests/current
