@@ -74,7 +74,7 @@ populate_index(Population, CRDT, EntryType, PId, TargetNode) ->
 	Seq = [lists:concat(["p", PId, ".", N]) || N <- lists:seq(1, Population)],
 	
 	BoundObject = {?BOBJ_KEY, CRDT, ?BOBJ_BUCKET},
-	io:format("Populating index: ~p...~n", [BoundObject]),
+	?INFO("Populating index ~p on worker ~p...\n", [BoundObject, PId]),
 	
 	{ok, TxId} = rpc:call(TargetNode, antidote, start_transaction, [ignore, []]),
 	
@@ -199,13 +199,13 @@ ping_each([Node | Rest], Acc) ->
 random_string(Len) ->
     Chrs = list_to_tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
     ChrsSize = size(Chrs),
-    F = fun(_, R) -> [element(rand_compat:uniform(ChrsSize), Chrs) | R] end,
+    F = fun(_, R) -> [element(rand:uniform(ChrsSize), Chrs) | R] end,
     lists:foldl(F, "", lists:seq(1, Len)).
 
 get_random([]) -> undefined;
 get_random(Set) ->
   List = ordsets:to_list(Set),
-  FirstPos = rand_compat:uniform(length(List)),
+  FirstPos = rand:uniform(length(List)),
   lists:nth(FirstPos, List).
 
 gen_range(WriteSet) ->
@@ -219,9 +219,9 @@ gen_range(WriteSet) ->
          end;
     Len ->
          {FirstHalf, SecondHalf} = lists:split(Len div 2, List),
-         FirstPos = rand_compat:uniform(length(FirstHalf)),
+         FirstPos = rand:uniform(length(FirstHalf)),
          {Elem1, _} = take_nth(FirstPos, FirstHalf),
-         SecondPos = rand_compat:uniform(length(SecondHalf)),
+         SecondPos = rand:uniform(length(SecondHalf)),
          {Elem2, _} = take_nth(SecondPos, SecondHalf),
 	 %%?INFO("{Elem1, Elem2} = {~p, ~p}\n", [Elem1, Elem2]),
          {{greatereq, Elem1}, {lessereq, Elem2}}

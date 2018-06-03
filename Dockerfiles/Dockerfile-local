@@ -1,0 +1,15 @@
+FROM erlang:19
+
+ENV BB_NODE_NAME "bb@127.0.0.1"
+
+ADD . /opt/basho-bench-aql/
+
+RUN set -xe && cd /opt/basho-bench-aql && make all
+  
+# Must run to calculate results within the container
+# RUN apt-get update && apt-get install -y r-base
+
+# Ports for testing
+EXPOSE 9999
+
+ENTRYPOINT ["/bin/bash"]

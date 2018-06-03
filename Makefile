@@ -53,7 +53,7 @@ bench:
 	sudo chmod u+x ./scripts/run_aql_bench.sh
 	./scripts/run_aql_bench.sh
 
-all_results:
+aql_all_results:
 	sudo chmod u+x ./scripts/all_results.sh
 	./scripts/all_results.sh
 
