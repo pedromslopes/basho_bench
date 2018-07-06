@@ -48,6 +48,8 @@ run(get, KeyGen, ValGen, #state{actor=Node} = State) ->
   case exec(Node, Query) of
     {ok, _} ->
       {ok, State};
+    {ok, _, _} ->
+    	{ok, State};
     {error, _Reason} ->
       {ok, State}
   end;
@@ -62,6 +64,9 @@ run(put, KeyGen, ValGen, #state{actor=Node, artists=Artists, albums=Albums} = St
     {ok, _} ->
       {NewArtists, NewAlbums} = put_value(Table, Key, Artists, Albums),
       {ok, State#state{artists=NewArtists, albums=NewAlbums}};
+    {ok, _, _} ->
+    	{NewArtists, NewAlbums} = put_value(Table, Key, Artists, Albums),
+      {ok, State#state{artists=NewArtists, albums=NewAlbums}};
     {error, _Err} ->
       {ok, State}
   end;
@@ -75,6 +80,9 @@ run(delete, KeyGen, ValGen, #state{actor=Node, artists=Artists, albums=Albums} =
     {ok, _} ->
       {NewArtists, NewAlbums} = del_value(Table, Key, Artists, Albums),
       {ok, State#state{artists=NewArtists, albums=NewAlbums}};
+    {ok, _, _} ->
+      {NewArtists, NewAlbums} = del_value(Table, Key, Artists, Albums),
+      {ok, State#state{artists=NewArtists, albums=NewAlbums}};
     {error, _Err} ->
       {ok, State}
   end;
@@ -86,8 +94,8 @@ exec({AQLNode, AntidoteNode}, Query) ->
 
 create_schema(1, AQLNode, AntidoteNode) ->
   ArtistsQuery = "CREATE @AW TABLE Artist (Name VARCHAR PRIMARY KEY);",
-  AlbumsQuery = "CREATE @AW TABLE Album (Title VARCHAR PRIMARY KEY, Artist VARCHAR FOREIGN KEY @FR REFERENCES Artist(Name));",
-  TracksQuery = "CREATE @AW TABLE Track (Title VARCHAR PRIMARY KEY, Album VARCHAR FOREIGN KEY @FR REFERENCES Album(Title));",
+  AlbumsQuery = "CREATE @AW TABLE Album (Name VARCHAR PRIMARY KEY, Artist VARCHAR FOREIGN KEY @FR REFERENCES Artist(Name));",
+  TracksQuery = "CREATE @AW TABLE Track (Name VARCHAR PRIMARY KEY, Album VARCHAR FOREIGN KEY @FR REFERENCES Album(Name));",
   exec({AQLNode, AntidoteNode}, ArtistsQuery),
   exec({AQLNode, AntidoteNode}, AlbumsQuery),
   exec({AQLNode, AntidoteNode}, TracksQuery);

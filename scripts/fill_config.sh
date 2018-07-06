@@ -2,6 +2,7 @@
 
 echo "Writting ips to config files..."
 sed -i "s/Nodes/[\"$1\", \"$2\", \"$3\"]/g" ./config/**/*.config
+sed -i "s/AntidoteNames/[\"antidote@$1\", \"antidote@$2\", \"antidote@$3\"]/g" ./config/**/*.config
 echo "Done"
 
 echo "Fetching self public ip..."
