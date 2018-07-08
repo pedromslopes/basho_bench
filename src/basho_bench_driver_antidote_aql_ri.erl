@@ -39,7 +39,7 @@ new(Id) ->
     pong ->
       lager:info("worker ~b is bound to ~s", [Id, AQLNode]),
       TxId = begin_transaction(AQLNode, AntidoteNode),
-      create_schema(Id, AQLNode, AntidoteNode, TxId),
+      create_schema(AQLNode, AntidoteNode, TxId),
       
       {Artists, Albums, Tracks} =
         case Population of
@@ -66,7 +66,8 @@ run(get, KeyGen, ValGen, #state{actor=Node, tx=TxId, artists=Artists, albums=Alb
       {ok, State};
     {ok, _, _} ->
     	{ok, State};
-    {error, _Reason} ->
+    {error, _Reason} = Error ->
+      lager:error("Error while querying: ~p", [Error]),
       {ok, State}
   end;
 run(put, KeyGen, ValGen, #state{actor=Node, tx=TxId, artists=Artists, albums=Albums, tracks=Tracks} = State) ->
@@ -83,7 +84,8 @@ run(put, KeyGen, ValGen, #state{actor=Node, tx=TxId, artists=Artists, albums=Alb
     {ok, _, _} ->
     	{NewArtists, NewAlbums, NewTracks} = put_value(Table, Key, Artists, Albums, Tracks),
       {ok, State#state{artists=NewArtists, albums=NewAlbums, tracks=NewTracks}};
-    {error, _Err} ->
+    {error, _Err} = Error ->
+      lager:error("Error while inserting row: ~p", [Error]),
       {ok, State}
   end;
 run(delete, KeyGen, ValGen, #state{actor=Node, tx=TxId, artists=Artists, albums=Albums, tracks=Tracks} = State) ->  
@@ -104,7 +106,8 @@ run(delete, KeyGen, ValGen, #state{actor=Node, tx=TxId, artists=Artists, albums=
     {ok, _, _} ->
       {NewArtists, NewAlbums, NewTracks} = del_value(Table, Key, Artists, Albums, Tracks),
       {ok, State#state{artists=NewArtists, albums=NewAlbums, tracks=NewTracks}};
-    {error, _Err} ->
+    {error, _Err} = Error ->
+      lager:error("Error while deleting row: ~p", [Error]),
       {ok, State}
   end;
 run(Op, _KeyGen, _ValGen, _State) ->
@@ -118,7 +121,7 @@ begin_transaction(AQLNode, AntidoteNode) ->
 	{ok, _, Tx} = exec({AQLNode, AntidoteNode}, "BEGIN TRANSACTION;", undefined),
 	Tx.
 
-create_schema(1, AQLNode, AntidoteNode, TxId) ->
+create_schema(AQLNode, AntidoteNode, TxId) ->
   {ArtistTPolicy, _, _} =
     to_string(basho_bench_config:get(artist_crp, {?ADD_WINS, undefined, undefined})),
   {AlbumTPolicy, AlbumDepPolicy, AlbumCascade} =
@@ -136,8 +139,7 @@ create_schema(1, AQLNode, AntidoteNode, TxId) ->
 
   exec({AQLNode, AntidoteNode}, ArtistQuery, TxId),
   exec({AQLNode, AntidoteNode}, AlbumQuery, TxId),
-  exec({AQLNode, AntidoteNode}, TrackQuery, TxId);
-create_schema(_, _, _, _) -> ok.
+  exec({AQLNode, AntidoteNode}, TrackQuery, TxId).
 
 populate_db(Id, Population, AQLNode, AntidoteNode, TxId) ->
 	KeyGen = basho_bench_keygen:new(basho_bench_config:get(key_generator), Id),
@@ -155,7 +157,8 @@ populate_db(Id, Population, AQLNode, AntidoteNode, TxId) ->
 		    put_value(Table, Key, Artists, Albums, Tracks);
 		  {ok, _, _} ->
 		  	put_value(Table, Key, Artists, Albums, Tracks);
-		  {error, _Err} ->
+		  {error, _Err} = Error ->
+        lager:error("Error while populating: ~p", [Error]),
 		    {Artists, Albums, Tracks}
 		end
 	end, {[], [], []}, lists:seq(1, Population)).
