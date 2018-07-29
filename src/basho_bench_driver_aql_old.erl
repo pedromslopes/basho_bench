@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 18. ago 2017 17:29
 %%%-------------------------------------------------------------------
--module(basho_bench_driver_antidote_aql).
+-module(basho_bench_driver_aql_old).
 -author("joao").
 
 -export([new/1,

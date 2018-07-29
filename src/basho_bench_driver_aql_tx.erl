@@ -4,7 +4,7 @@
 %%%
 %%% @end
 %%%-------------------------------------------------------------------
--module(basho_bench_driver_antidote_aql_tx).
+-module(basho_bench_driver_aql_tx).
 -author("pedrolopes").
 
 -export([new/1, run/4]).

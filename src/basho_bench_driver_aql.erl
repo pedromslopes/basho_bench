@@ -4,7 +4,7 @@
 %%%
 %%% @end
 %%%-------------------------------------------------------------------
--module(basho_bench_driver_antidote_aql_ri).
+-module(basho_bench_driver_aql).
 -author("pedrolopes").
 
 -export([new/1, run/4]).
@@ -38,6 +38,9 @@ new(Id) ->
       {error, "Connection error", #state{actor = undefined}};
     pong ->
       lager:info("worker ~b is bound to ~s", [Id, AQLNode]),
+      %% start AQL application
+      start_application(AQLNode),
+
       TxId = begin_transaction(AQLNode, AntidoteNode),
       create_schema(AQLNode, AntidoteNode, TxId),
       
@@ -46,11 +49,13 @@ new(Id) ->
           0 -> {[], [], []};
           _Else -> populate_db(Id, Population, AQLNode, AntidoteNode, TxId)
         end,
+
+      commit_transaction(AQLNode, AntidoteNode, TxId),
       
-      {ok, #state{actor = {AQLNode, AntidoteNode}, tx = TxId, artists=Artists, albums=Albums, tracks=Tracks}}
+      {ok, #state{actor = {AQLNode, AntidoteNode}, tx = undefined, artists = Artists, albums = Albums, tracks = Tracks}}
   end.
 
-run(get, KeyGen, ValGen, #state{actor=Node, tx=TxId, artists=Artists, albums=Albums, tracks=Tracks} = State) ->
+run(get, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, albums = Albums, tracks = Tracks} = State) ->
   Value = ValGen(),
   Table = integer_to_table(Value, undefined, undefined),
   
@@ -68,9 +73,12 @@ run(get, KeyGen, ValGen, #state{actor=Node, tx=TxId, artists=Artists, albums=Alb
     	{ok, State};
     {error, _Reason} = Error ->
       lager:error("Error while querying: ~p", [Error]),
+      {ok, State};
+    Other ->
+      lager:error("Something happened while querying: ~p", [Other]),
       {ok, State}
   end;
-run(put, KeyGen, ValGen, #state{actor=Node, tx=TxId, artists=Artists, albums=Albums, tracks=Tracks} = State) ->
+run(put, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, albums = Albums, tracks = Tracks} = State) ->
   Key = KeyGen(),
   KeyStr = create_key(Key),
   Value = ValGen(),
@@ -86,9 +94,12 @@ run(put, KeyGen, ValGen, #state{actor=Node, tx=TxId, artists=Artists, albums=Alb
       {ok, State#state{artists=NewArtists, albums=NewAlbums, tracks=NewTracks}};
     {error, _Err} = Error ->
       lager:error("Error while inserting row: ~p", [Error]),
+      {ok, State};
+    Other ->
+      lager:error("Something happened while inserting row: ~p", [Other]),
       {ok, State}
   end;
-run(delete, KeyGen, ValGen, #state{actor=Node, tx=TxId, artists=Artists, albums=Albums, tracks=Tracks} = State) ->  
+run(delete, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, albums = Albums, tracks = Tracks} = State) ->
   Value = ValGen(),
   Table = integer_to_table(Value, Artists, Albums),
   
@@ -108,18 +119,27 @@ run(delete, KeyGen, ValGen, #state{actor=Node, tx=TxId, artists=Artists, albums=
       {ok, State#state{artists=NewArtists, albums=NewAlbums, tracks=NewTracks}};
     {error, _Err} = Error ->
       lager:error("Error while deleting row: ~p", [Error]),
+      {ok, State};
+    Other ->
+      lager:error("Something happened while deleting row: ~p", [Other]),
       {ok, State}
   end;
 run(Op, _KeyGen, _ValGen, _State) ->
   lager:warning("Unrecognized operation: ~p", [Op]).
 
+start_application(AQLNode) ->
+  {ok, _Started} = rpc:call(AQLNode, aql, start, []).
+
 exec({AQLNode, AntidoteNode}, Query, TxId) ->
   %lager:info("Executing query: ~p", [Query]),
-  rpc:call(AQLNode, aqlparser, parse, [{str, Query}, AntidoteNode, TxId]).
+  rpc:call(AQLNode, aql, query, [Query, AntidoteNode, TxId]).
 
 begin_transaction(AQLNode, AntidoteNode) ->
 	{ok, _, Tx} = exec({AQLNode, AntidoteNode}, "BEGIN TRANSACTION;", undefined),
 	Tx.
+
+commit_transaction(AQLNode, AntidoteNode, TxId) ->
+  {ok, _, _} = exec({AQLNode, AntidoteNode}, "COMMIT TRANSACTION;", TxId).
 
 create_schema(AQLNode, AntidoteNode, TxId) ->
   {ArtistTPolicy, _, _} =
@@ -159,7 +179,10 @@ populate_db(Id, Population, AQLNode, AntidoteNode, TxId) ->
 		  	put_value(Table, Key, Artists, Albums, Tracks);
 		  {error, _Err} = Error ->
         lager:error("Error while populating: ~p", [Error]),
-		    {Artists, Albums, Tracks}
+		    {Artists, Albums, Tracks};
+      Other ->
+        lager:error("Something happened while populating: ~p", [Other]),
+        {Artists, Albums, Tracks}
 		end
 	end, {[], [], []}, lists:seq(1, Population)).
 
