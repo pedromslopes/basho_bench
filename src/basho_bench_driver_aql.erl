@@ -29,9 +29,9 @@ new(Id) ->
   Population = basho_bench_config:get(population, 500),
   Ip = lists:nth((Id rem length(Actors)+1), Actors),
   AQLNodeStr = lists:concat([Shell, "@", Ip]),
-  AntidoteNodeStr = lists:concat(["antidote@", Ip]),
+  %AntidoteNodeStr = lists:concat(["antidote@", Ip]),
   AQLNode = list_to_atom(AQLNodeStr),
-  AntidoteNode = list_to_atom(AntidoteNodeStr),
+  %AntidoteNode = list_to_atom(AntidoteNodeStr),
   case net_adm:ping(AQLNode) of
     pang ->
       lager:error("~s is not available", [AQLNode]),
@@ -39,20 +39,20 @@ new(Id) ->
     pong ->
       lager:info("worker ~b is bound to ~s", [Id, AQLNode]),
       %% start AQL application
-      start_application(AQLNode),
+      %start_application(AQLNode),
 
-      TxId = begin_transaction(AQLNode, AntidoteNode),
-      create_schema(AQLNode, AntidoteNode, TxId),
+      TxId = begin_transaction(AQLNode),
+      create_schema(AQLNode, TxId),
       
       {Artists, Albums, Tracks} =
         case Population of
           0 -> {[], [], []};
-          _Else -> populate_db(Id, Population, AQLNode, AntidoteNode, TxId)
+          _Else -> populate_db(Id, Population, AQLNode, TxId)
         end,
 
-      commit_transaction(AQLNode, AntidoteNode, TxId),
+      commit_transaction(AQLNode, TxId),
       
-      {ok, #state{actor = {AQLNode, AntidoteNode}, tx = undefined, artists = Artists, albums = Albums, tracks = Tracks}}
+      {ok, #state{actor = AQLNode, tx = undefined, artists = Artists, albums = Albums, tracks = Tracks}}
   end.
 
 run(get, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, albums = Albums, tracks = Tracks} = State) ->
@@ -127,21 +127,21 @@ run(delete, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, a
 run(Op, _KeyGen, _ValGen, _State) ->
   lager:warning("Unrecognized operation: ~p", [Op]).
 
-start_application(AQLNode) ->
-  {ok, _Started} = rpc:call(AQLNode, aql, start, []).
+%start_application(AQLNode) ->
+%  {ok, _Started} = rpc:call(AQLNode, aql, start, []).
 
-exec({AQLNode, AntidoteNode}, Query, TxId) ->
+exec(AQLNode, Query, TxId) ->
   %lager:info("Executing query: ~p", [Query]),
-  rpc:call(AQLNode, aql, query, [Query, AntidoteNode, TxId]).
+  rpc:call(AQLNode, aql, query, [Query, TxId]).
 
-begin_transaction(AQLNode, AntidoteNode) ->
-	{ok, _, Tx} = exec({AQLNode, AntidoteNode}, "BEGIN TRANSACTION;", undefined),
+begin_transaction(AQLNode) ->
+	{ok, _, Tx} = exec(AQLNode, "BEGIN TRANSACTION;", undefined),
 	Tx.
 
-commit_transaction(AQLNode, AntidoteNode, TxId) ->
-  {ok, _, _} = exec({AQLNode, AntidoteNode}, "COMMIT TRANSACTION;", TxId).
+commit_transaction(AQLNode, TxId) ->
+  {ok, _, _} = exec(AQLNode, "COMMIT TRANSACTION;", TxId).
 
-create_schema(AQLNode, AntidoteNode, TxId) ->
+create_schema(AQLNode, TxId) ->
   {ArtistTPolicy, _, _} =
     to_string(basho_bench_config:get(artist_crp, {?ADD_WINS, undefined, undefined})),
   {AlbumTPolicy, AlbumDepPolicy, AlbumCascade} =
@@ -157,11 +157,11 @@ create_schema(AQLNode, AntidoteNode, TxId) ->
     "Album VARCHAR FOREIGN KEY " ++ TrackDepPolicy ++ " REFERENCES Album(Name) " ++
     TrackCascade ++ ");",
 
-  exec({AQLNode, AntidoteNode}, ArtistQuery, TxId),
-  exec({AQLNode, AntidoteNode}, AlbumQuery, TxId),
-  exec({AQLNode, AntidoteNode}, TrackQuery, TxId).
+  exec(AQLNode, ArtistQuery, TxId),
+  exec(AQLNode, AlbumQuery, TxId),
+  exec(AQLNode, TrackQuery, TxId).
 
-populate_db(Id, Population, AQLNode, AntidoteNode, TxId) ->
+populate_db(Id, Population, AQLNode, TxId) ->
 	KeyGen = basho_bench_keygen:new(basho_bench_config:get(key_generator), Id),
 	ValGen = basho_bench_keygen:new(basho_bench_config:get(value_generator), Id),
 
@@ -172,7 +172,7 @@ populate_db(Id, Population, AQLNode, AntidoteNode, TxId) ->
 		Table = integer_to_table(Value, Artists, Albums),
 		Values = gen_values(KeyStr, Table, Artists, Albums),
 		Query = lists:concat(["INSERT INTO ", Table, " VALUES ", Values, ";"]),
-		case exec({AQLNode, AntidoteNode}, Query, TxId) of
+		case exec(AQLNode, Query, TxId) of
 		  {ok, _} ->
 		    put_value(Table, Key, Artists, Albums, Tracks);
 		  {ok, _, _} ->
