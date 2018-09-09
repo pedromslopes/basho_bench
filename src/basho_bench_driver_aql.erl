@@ -13,11 +13,11 @@
 
 -record(state, {actor, tx = undefined, artists = [], albums = [], tracks = []}).
 
--define(ADD_WINS, aw).
--define(REMOVE_WINS, rw).
 -define(UPDATE_WINS, 'update-wins').
 -define(DELETE_WINS, 'delete-wins').
+-define(NO_CONCURRENCY, 'no-concurrency').
 -define(CASCADE, cascade).
+-define(RESTRICT, restrict).
 
 %% ====================================================================
 %% API
@@ -69,6 +69,9 @@ run(get, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, albu
   case exec(Node, Query, TxId) of
     {ok, _} ->
       {ok, State};
+    {ok, [{error, _Msg}], _} ->
+      %lager:error("Error while querying: ~p", [Msg]),
+      {ok, State};
     {ok, _, _} ->
     	{ok, State};
     {error, _Reason} = Error ->
@@ -89,6 +92,9 @@ run(put, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, albu
     {ok, _} ->
       {NewArtists, NewAlbums, NewTracks} = put_value(Table, Key, Artists, Albums, Tracks),
       {ok, State#state{artists=NewArtists, albums=NewAlbums, tracks=NewTracks}};
+    {ok, [{error, _Msg}], _} ->
+      %lager:error("Error while inserting row: ~p", [Msg]),
+      {ok, State};
     {ok, _, _} ->
     	{NewArtists, NewAlbums, NewTracks} = put_value(Table, Key, Artists, Albums, Tracks),
       {ok, State#state{artists=NewArtists, albums=NewAlbums, tracks=NewTracks}};
@@ -114,6 +120,9 @@ run(delete, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, a
     {ok, _} ->
       {NewArtists, NewAlbums, NewTracks} = del_value(Table, Key, Artists, Albums, Tracks),
       {ok, State#state{artists=NewArtists, albums=NewAlbums, tracks=NewTracks}};
+    {ok, [{error, _Msg}], _} ->
+      %lager:error("Error while deleting row: ~p", [Msg]),
+      {ok, State};
     {ok, _, _} ->
       {NewArtists, NewAlbums, NewTracks} = del_value(Table, Key, Artists, Albums, Tracks),
       {ok, State#state{artists=NewArtists, albums=NewAlbums, tracks=NewTracks}};
@@ -143,11 +152,11 @@ commit_transaction(AQLNode, TxId) ->
 
 create_schema(AQLNode, TxId) ->
   {ArtistTPolicy, _, _} =
-    to_string(basho_bench_config:get(artist_crp, {?ADD_WINS, undefined, undefined})),
+    to_string(basho_bench_config:get(artist_crp, {?UPDATE_WINS, undefined, undefined})),
   {AlbumTPolicy, AlbumDepPolicy, AlbumCascade} =
-    to_string(basho_bench_config:get(album_crp, {?ADD_WINS, ?UPDATE_WINS, ?CASCADE})),
+    to_string(basho_bench_config:get(album_crp, {?UPDATE_WINS, ?UPDATE_WINS, ?CASCADE})),
   {TrackTPolicy, TrackDepPolicy, TrackCascade} =
-    to_string(basho_bench_config:get(track_crp, {?ADD_WINS, ?UPDATE_WINS, ?CASCADE})),
+    to_string(basho_bench_config:get(track_crp, {?UPDATE_WINS, ?UPDATE_WINS, ?CASCADE})),
 
   ArtistQuery = "CREATE " ++ ArtistTPolicy ++ " TABLE Artist (Name VARCHAR PRIMARY KEY);",
   AlbumQuery = "CREATE " ++ AlbumTPolicy ++ " TABLE Album (Name VARCHAR PRIMARY KEY, " ++
@@ -160,6 +169,11 @@ create_schema(AQLNode, TxId) ->
   exec(AQLNode, ArtistQuery, TxId),
   exec(AQLNode, AlbumQuery, TxId),
   exec(AQLNode, TrackQuery, TxId).
+
+  %IndexAlbumQuery = "CREATE INDEX ArtistIdx ON Album(Artist);",
+  %IndexTrackQuery = "CREATE INDEX AlbumIdx ON Track(Album);",
+  %exec(AQLNode, IndexAlbumQuery, TxId),
+  %exec(AQLNode, IndexTrackQuery, TxId).
 
 populate_db(Id, Population, AQLNode, TxId) ->
 	KeyGen = basho_bench_keygen:new(basho_bench_config:get(key_generator), Id),
@@ -231,9 +245,9 @@ get_random(Keys) ->
 
 to_string({TPolicy, DepPolicy, Cascade}) ->
   {to_string(TPolicy), to_string(DepPolicy), to_string(Cascade)};
-to_string(?ADD_WINS) -> "AW";
-to_string(?REMOVE_WINS) -> "RW";
 to_string(?UPDATE_WINS) -> "UPDATE-WINS";
 to_string(?DELETE_WINS) -> "DELETE-WINS";
+to_string(?NO_CONCURRENCY) -> "";
 to_string(?CASCADE) -> "ON DELETE CASCADE";
+to_string(?RESTRICT) -> "";
 to_string(_) -> "".
