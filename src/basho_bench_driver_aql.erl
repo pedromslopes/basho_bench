@@ -11,7 +11,7 @@
 
 -include_lib("basho_bench.hrl").
 
--record(state, {actor, tx = undefined, artists = [], albums = [], tracks = []}).
+-record(state, {actor, tx = undefined, galleries = [], artists = [], artworks = []}).
 
 -define(UPDATE_WINS, 'update-wins').
 -define(DELETE_WINS, 'delete-wins').
@@ -29,9 +29,7 @@ new(Id) ->
   Population = basho_bench_config:get(population, 500),
   Ip = lists:nth((Id rem length(Actors)+1), Actors),
   AQLNodeStr = lists:concat([Shell, "@", Ip]),
-  %AntidoteNodeStr = lists:concat(["antidote@", Ip]),
   AQLNode = list_to_atom(AQLNodeStr),
-  %AntidoteNode = list_to_atom(AntidoteNodeStr),
   case net_adm:ping(AQLNode) of
     pang ->
       lager:error("~s is not available", [AQLNode]),
@@ -44,7 +42,7 @@ new(Id) ->
       TxId = begin_transaction(AQLNode),
       create_schema(AQLNode, TxId),
       
-      {Artists, Albums, Tracks} =
+      {Galleries, Artists, ArtWorks} =
         case Population of
           0 -> {[], [], []};
           _Else -> populate_db(Id, Population, AQLNode, TxId)
@@ -52,14 +50,14 @@ new(Id) ->
 
       commit_transaction(AQLNode, TxId),
       
-      {ok, #state{actor = AQLNode, tx = undefined, artists = Artists, albums = Albums, tracks = Tracks}}
+      {ok, #state{actor = AQLNode, tx = undefined, galleries = Galleries, artists = Artists, artworks = ArtWorks}}
   end.
 
-run(get, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, albums = Albums, tracks = Tracks} = State) ->
+run(get, KeyGen, ValGen, #state{actor = Node, tx = TxId, galleries = Galleries, artists = Artists, artworks = ArtWorks} = State) ->
   Value = ValGen(),
   Table = integer_to_table(Value, undefined, undefined),
   
-  Key = case get_random(Table, Artists, Albums, Tracks) of
+  Key = case get_random(Table, Galleries, Artists, ArtWorks) of
   				undefined -> KeyGen();
   				RandomKey -> RandomKey
   			end,
@@ -81,23 +79,23 @@ run(get, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, albu
       lager:error("Something happened while querying: ~p", [Other]),
       {ok, State}
   end;
-run(put, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, albums = Albums, tracks = Tracks} = State) ->
+run(put, KeyGen, ValGen, #state{actor = Node, tx = TxId, galleries = Galleries, artists = Artists, artworks = ArtWorks} = State) ->
   Key = KeyGen(),
   KeyStr = create_key(Key),
   Value = ValGen(),
-  Table = integer_to_table(Value, Artists, Albums),
-  Values = gen_values(KeyStr, Table, Artists, Albums),
+  Table = integer_to_table(Value, Galleries, Artists),
+  Values = gen_values(KeyStr, Table, Galleries, Artists),
   Query = lists:concat(["INSERT INTO ", Table, " VALUES ", Values, ";"]),
   case exec(Node, Query, TxId) of
     {ok, _} ->
-      {NewArtists, NewAlbums, NewTracks} = put_value(Table, Key, Artists, Albums, Tracks),
-      {ok, State#state{artists=NewArtists, albums=NewAlbums, tracks=NewTracks}};
+      {NewGalleries, NewArtists, NewArtWorks} = put_value(Table, Key, Galleries, Artists, ArtWorks),
+      {ok, State#state{galleries = NewGalleries, artists = NewArtists, artworks = NewArtWorks}};
     {ok, [{error, _Msg}], _} ->
       %lager:error("Error while inserting row: ~p", [Msg]),
       {ok, State};
     {ok, _, _} ->
-    	{NewArtists, NewAlbums, NewTracks} = put_value(Table, Key, Artists, Albums, Tracks),
-      {ok, State#state{artists=NewArtists, albums=NewAlbums, tracks=NewTracks}};
+    	{NewGalleries, NewArtists, NewArtWorks} = put_value(Table, Key, Galleries, Artists, ArtWorks),
+      {ok, State#state{galleries = NewGalleries, artists = NewArtists, artworks = NewArtWorks}};
     {error, _Err} = Error ->
       lager:error("Error while inserting row: ~p", [Error]),
       {ok, State};
@@ -105,11 +103,11 @@ run(put, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, albu
       lager:error("Something happened while inserting row: ~p", [Other]),
       {ok, State}
   end;
-run(delete, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, albums = Albums, tracks = Tracks} = State) ->
+run(delete, KeyGen, ValGen, #state{actor = Node, tx = TxId, galleries = Galleries, artists = Artists, artworks = ArtWorks} = State) ->
   Value = ValGen(),
-  Table = integer_to_table(Value, Artists, Albums),
+  Table = integer_to_table(Value, Galleries, Artists),
   
-  Key = case get_random(Table, Artists, Albums, Tracks) of
+  Key = case get_random(Table, Galleries, Artists, ArtWorks) of
   				undefined -> KeyGen();
   				RandomKey -> RandomKey
   			end,
@@ -118,14 +116,14 @@ run(delete, KeyGen, ValGen, #state{actor = Node, tx = TxId, artists = Artists, a
   Query = lists:concat(["DELETE FROM ", Table, " WHERE Name = ", KeyStr, ";"]),
   case exec(Node, Query, TxId) of
     {ok, _} ->
-      {NewArtists, NewAlbums, NewTracks} = del_value(Table, Key, Artists, Albums, Tracks),
-      {ok, State#state{artists=NewArtists, albums=NewAlbums, tracks=NewTracks}};
+      {NewGalleries, NewArtists, NewArtWorks} = del_value(Table, Key, Galleries, Artists, ArtWorks),
+      {ok, State#state{galleries = NewGalleries, artists = NewArtists, artworks = NewArtWorks}};
     {ok, [{error, _Msg}], _} ->
       %lager:error("Error while deleting row: ~p", [Msg]),
       {ok, State};
     {ok, _, _} ->
-      {NewArtists, NewAlbums, NewTracks} = del_value(Table, Key, Artists, Albums, Tracks),
-      {ok, State#state{artists=NewArtists, albums=NewAlbums, tracks=NewTracks}};
+      {NewGalleries, NewArtists, NewArtWorks} = del_value(Table, Key, Galleries, Artists, ArtWorks),
+      {ok, State#state{galleries = NewGalleries, artists = NewArtists, artworks = NewArtWorks}};
     {error, _Err} = Error ->
       lager:error("Error while deleting row: ~p", [Error]),
       {ok, State};
@@ -151,24 +149,27 @@ commit_transaction(AQLNode, TxId) ->
   {ok, _, _} = exec(AQLNode, "COMMIT TRANSACTION;", TxId).
 
 create_schema(AQLNode, TxId) ->
-  {ArtistTPolicy, _, _} =
-    to_string(basho_bench_config:get(artist_crp, {?UPDATE_WINS, undefined, undefined})),
-  {AlbumTPolicy, AlbumDepPolicy, AlbumCascade} =
-    to_string(basho_bench_config:get(album_crp, {?UPDATE_WINS, ?UPDATE_WINS, ?CASCADE})),
-  {TrackTPolicy, TrackDepPolicy, TrackCascade} =
-    to_string(basho_bench_config:get(track_crp, {?UPDATE_WINS, ?UPDATE_WINS, ?CASCADE})),
+  {GalleryTPolicy, _, _} =
+    to_string(basho_bench_config:get(gallery_crp, {?UPDATE_WINS, undefined, undefined})),
+  {ArtistTPolicy, ArtistDepPolicy, ArtistCascade} =
+    to_string(basho_bench_config:get(artist_crp, {?UPDATE_WINS, ?UPDATE_WINS, ?CASCADE})),
+  {ArtWorkTPolicy, ArtWorkDepPolicy, ArtWorkCascade} =
+    to_string(basho_bench_config:get(artwork_crp, {?UPDATE_WINS, ?UPDATE_WINS, ?CASCADE})),
 
-  ArtistQuery = "CREATE " ++ ArtistTPolicy ++ " TABLE Artist (Name VARCHAR PRIMARY KEY);",
-  AlbumQuery = "CREATE " ++ AlbumTPolicy ++ " TABLE Album (Name VARCHAR PRIMARY KEY, " ++
-    "Artist VARCHAR FOREIGN KEY " ++ AlbumDepPolicy ++ " REFERENCES Artist(Name) " ++
-    AlbumCascade ++ ");",
-  TrackQuery = "CREATE " ++ TrackTPolicy ++ " TABLE Track (Name VARCHAR PRIMARY KEY, " ++
-    "Album VARCHAR FOREIGN KEY " ++ TrackDepPolicy ++ " REFERENCES Album(Name) " ++
-    TrackCascade ++ ");",
+  Partitions = basho_bench_config:get(partitions, []),
 
+  GalleryQuery = "CREATE " ++ GalleryTPolicy ++ " TABLE Gallery (Name VARCHAR PRIMARY KEY) " ++
+    partition_to_string('Gallery', Partitions) ++ ";",
+  ArtistQuery = "CREATE " ++ ArtistTPolicy ++ " TABLE Artist (Name VARCHAR PRIMARY KEY, " ++
+    "Gallery VARCHAR FOREIGN KEY " ++ ArtistDepPolicy ++ " REFERENCES Gallery(Name) " ++
+    ArtistCascade ++ ") " ++ partition_to_string('Artist', Partitions) ++ ";",
+  ArtWorkQuery = "CREATE " ++ ArtWorkTPolicy ++ " TABLE ArtWork (Name VARCHAR PRIMARY KEY, " ++
+    "Artist VARCHAR FOREIGN KEY " ++ ArtWorkDepPolicy ++ " REFERENCES Artist(Name) " ++
+    ArtWorkCascade ++ ") " ++ partition_to_string('ArtWork', Partitions) ++ ";",
+
+  exec(AQLNode, GalleryQuery, TxId),
   exec(AQLNode, ArtistQuery, TxId),
-  exec(AQLNode, AlbumQuery, TxId),
-  exec(AQLNode, TrackQuery, TxId).
+  exec(AQLNode, ArtWorkQuery, TxId).
 
   %IndexAlbumQuery = "CREATE INDEX ArtistIdx ON Album(Artist);",
   %IndexTrackQuery = "CREATE INDEX AlbumIdx ON Track(Album);",
@@ -179,64 +180,64 @@ populate_db(Id, Population, AQLNode, TxId) ->
 	KeyGen = basho_bench_keygen:new(basho_bench_config:get(key_generator), Id),
 	ValGen = basho_bench_keygen:new(basho_bench_config:get(value_generator), Id),
 
-	lists:foldl(fun(_Elem, {Artists, Albums, Tracks}) ->
+	lists:foldl(fun(_Elem, {Galleries, Artists, ArtWorks}) ->
 		Key = KeyGen(),
 		KeyStr = create_key(Key),
 		Value = ValGen(),
-		Table = integer_to_table(Value, Artists, Albums),
-		Values = gen_values(KeyStr, Table, Artists, Albums),
+		Table = integer_to_table(Value, Galleries, Artists),
+		Values = gen_values(KeyStr, Table, Galleries, Artists),
 		Query = lists:concat(["INSERT INTO ", Table, " VALUES ", Values, ";"]),
 		case exec(AQLNode, Query, TxId) of
 		  {ok, _} ->
-		    put_value(Table, Key, Artists, Albums, Tracks);
+		    put_value(Table, Key, Galleries, Artists, ArtWorks);
 		  {ok, _, _} ->
-		  	put_value(Table, Key, Artists, Albums, Tracks);
+		  	put_value(Table, Key, Galleries, Artists, ArtWorks);
 		  {error, _Err} = Error ->
         lager:error("Error while populating: ~p", [Error]),
-		    {Artists, Albums, Tracks};
+		    {Galleries, Artists, ArtWorks};
       Other ->
         lager:error("Something happened while populating: ~p", [Other]),
-        {Artists, Albums, Tracks}
+        {Galleries, Artists, ArtWorks}
 		end
 	end, {[], [], []}, lists:seq(1, Population)).
 
 create_key(Key) ->
   lists:concat(["'", integer_to_list(Key), "'"]).
 
-put_value("Artist", Key, Artists, Albums, Tracks) ->
-  {[Key | Artists], Albums, Tracks};
-put_value("Album", Key, Artists, Albums, Tracks) ->
-  {Artists, [Key | Albums], Tracks};
-put_value("Track", Key, Artists, Albums, Tracks) ->
-  {Artists, Albums, [Key | Tracks]}.
+put_value("Gallery", Key, Galleries, Artists, ArtWorks) ->
+  {[Key | Galleries], Artists, ArtWorks};
+put_value("Artist", Key, Galleries, Artists, ArtWorks) ->
+  {Galleries, [Key | Artists], ArtWorks};
+put_value("ArtWork", Key, Galleries, Artists, ArtWorks) ->
+  {Galleries, Artists, [Key | ArtWorks]}.
 
-del_value("Artist", Key, Artists, Albums, Tracks) ->
-  {lists:delete(Key, Artists), Albums, Tracks};
-del_value("Album", Key, Artists, Albums, Tracks) ->
-  {Artists, lists:delete(Key, Albums), Tracks};
-del_value("Track", Key, Artists, Albums, Tracks) ->
-  {Artists, Albums, lists:delete(Key, Tracks)}.
+del_value("Gallery", Key, Galleries, Artists, ArtWorks) ->
+  {lists:delete(Key, Galleries), Artists, ArtWorks};
+del_value("Artist", Key, Galleries, Artists, ArtWorks) ->
+  {Galleries, lists:delete(Key, Artists), ArtWorks};
+del_value("ArtWork", Key, Galleries, Artists, ArtWorks) ->
+  {Galleries, Artists, lists:delete(Key, ArtWorks)}.
 
-gen_values(Key, "Artist", _, _) ->
+gen_values(Key, "Gallery", _, _) ->
   lists:concat(["(", Key, ")"]);
-gen_values(Key, "Album", [Artist | _Artists], _) ->
-  lists:concat(["(", Key, ", '", Artist, "')"]);
-gen_values(Key, "Track", _, [Album | _Albums]) ->
-  lists:concat(["(", Key, ", '", Album, "')"]).
+gen_values(Key, "Artist", [Gallery | _Galleries], _) ->
+  lists:concat(["(", Key, ", '", Gallery, "')"]);
+gen_values(Key, "ArtWork", _, [Artist | _Artists]) ->
+  lists:concat(["(", Key, ", '", Artist, "')"]).
 
-integer_to_table(1, _, _) -> "Artist";
-integer_to_table(2, [], _) -> "Artist";
-integer_to_table(2, _, _) -> "Album";
-integer_to_table(3, [], []) -> "Artist";
-integer_to_table(3, _, []) -> "Album";
-integer_to_table(3, _, _) -> "Track".
+integer_to_table(1, _, _) -> "Gallery";
+integer_to_table(2, [], _) -> "Gallery";
+integer_to_table(2, _, _) -> "Artist";
+integer_to_table(3, [], []) -> "Gallery";
+integer_to_table(3, _, []) -> "Artist";
+integer_to_table(3, _, _) -> "ArtWork".
 
-get_random("Artist", Artists, _, _) ->
+get_random("Gallery", Galleries, _, _) ->
+	get_random(Galleries);
+get_random("Artist", _, Artists, _) ->
 	get_random(Artists);
-get_random("Album", _, Albums, _) ->
-	get_random(Albums);
-get_random("Track", _, _, Tracks) ->
-	get_random(Tracks).
+get_random("ArtWork", _, _, ArtWorks) ->
+	get_random(ArtWorks).
 
 get_random([]) -> undefined;
 get_random(Keys) ->
@@ -251,3 +252,12 @@ to_string(?NO_CONCURRENCY) -> "";
 to_string(?CASCADE) -> "ON DELETE CASCADE";
 to_string(?RESTRICT) -> "";
 to_string(_) -> "".
+
+partition_to_string(_Table, []) -> "";
+partition_to_string(Table, Partitions) ->
+  case lists:keyfind(Table, 1, Partitions) of
+    false ->
+      "";
+    {Table, PartColumn} ->
+      lists:append(["PARTITION ON (", atom_to_list(PartColumn), ")"])
+  end.
