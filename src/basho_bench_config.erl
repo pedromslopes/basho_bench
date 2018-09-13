@@ -52,18 +52,18 @@ ensure_started() ->
     start_link().
 
 start_link() ->
-    gen_server:start_link({global, ?MODULE}, ?MODULE, [], []).
+    gen_server:start_link({global, generate_server_name(?MODULE, node())}, ?MODULE, [], []).
 
 
 load(Files) ->
     ensure_started(),
-    gen_server:call({global, ?MODULE}, {load_files, Files}). 
+    gen_server:call({global, generate_server_name(?MODULE, node())}, {load_files, Files}).
     
 set(Key, Value) ->
-    gen_server:call({global, ?MODULE}, {set, Key, Value}).
+    gen_server:call({global, generate_server_name(?MODULE, node())}, {set, Key, Value}).
 
 get(Key) ->
-    case gen_server:call({global, ?MODULE}, {get, Key}) of
+    case gen_server:call({global, generate_server_name(?MODULE, node())}, {get, Key}) of
         {ok, Value} ->
             Value;
         undefined ->
@@ -71,7 +71,7 @@ get(Key) ->
     end.
 
 get(Key, Default) ->
-    case gen_server:call({global, ?MODULE}, {get, Key}) of
+    case gen_server:call({global, generate_server_name(?MODULE, node())}, {get, Key}) of
         {ok, Value} ->
             Value;
         undefined ->
@@ -158,3 +158,5 @@ set_keys_from_files(Files) ->
     FlatKVs = lists:flatten(KVs),
     [application:set_env(basho_bench, Key, Value) || {Key, Value} <- FlatKVs].
 
+generate_server_name(Id, Node) ->
+    list_to_atom(atom_to_list(Id) ++ "." ++ atom_to_list(Node)).

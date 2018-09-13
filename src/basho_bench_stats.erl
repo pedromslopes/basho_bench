@@ -49,13 +49,13 @@
 %% ====================================================================
 
 start_link() ->
-    gen_server:start_link({global, ?MODULE}, ?MODULE, [], []).
+    gen_server:start_link({global, generate_server_name(?MODULE, node())}, ?MODULE, [], []).
 
 exponential(Lambda) ->
     -math:log(random:uniform()) / Lambda.
 
 run() ->
-    gen_server:call({global, ?MODULE}, run).
+    gen_server:call({global, generate_server_name(?MODULE, node())}, run).
 
 op_complete(Op, ok, ElapsedUs) ->
     op_complete(Op, {ok, 1}, ElapsedUs);
@@ -64,14 +64,14 @@ op_complete(Op, {ok, Units}, ElapsedUs) ->
    % io:format("Get distributed: ~p~n", [get_distributed()]),
     case get_distributed() of
         true ->
-            gen_server:cast({global, ?MODULE}, {Op, {ok, Units}, ElapsedUs});
+            gen_server:cast({global, generate_server_name(?MODULE, node())}, {Op, {ok, Units}, ElapsedUs});
         false ->
             folsom_metrics:notify({latencies, Op}, ElapsedUs),
             folsom_metrics:notify({units, Op}, {inc, Units})
     end,
     ok;
 op_complete(Op, Result, ElapsedUs) ->
-    gen_server:call({global, ?MODULE}, {op, Op, Result, ElapsedUs}, infinity).
+    gen_server:call({global, generate_server_name(?MODULE, node())}, {op, Op, Result, ElapsedUs}, infinity).
 
 %% ====================================================================
 %% gen_server callbacks
@@ -318,3 +318,6 @@ consume_report_msgs() ->
 normalize_name(StatsSink) when is_atom(StatsSink) ->
     {ok, list_to_atom("basho_bench_stats_writer_" ++ atom_to_list(StatsSink))};
 normalize_name(StatsSink) -> {error, {StatsSink, invalid_name}}.
+
+generate_server_name(Id, Node) ->
+    list_to_atom(atom_to_list(Id) ++ "." ++ atom_to_list(Node)).

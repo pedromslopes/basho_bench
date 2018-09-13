@@ -169,7 +169,13 @@ create_schema(AQLNode, TxId) ->
 
   exec(AQLNode, GalleryQuery, TxId),
   exec(AQLNode, ArtistQuery, TxId),
-  exec(AQLNode, ArtWorkQuery, TxId).
+  exec(AQLNode, ArtWorkQuery, TxId),
+
+  Indexes = basho_bench_config:get(indexes, []),
+  lists:foreach(fun(IndexSpec) ->
+    IndexQuery = index_query(IndexSpec),
+    exec(AQLNode, IndexQuery, TxId)
+  end, Indexes).
 
   %IndexAlbumQuery = "CREATE INDEX ArtistIdx ON Album(Artist);",
   %IndexTrackQuery = "CREATE INDEX AlbumIdx ON Track(Album);",
@@ -261,3 +267,9 @@ partition_to_string(Table, Partitions) ->
     {Table, PartColumn} ->
       lists:append(["PARTITION ON (", atom_to_list(PartColumn), ")"])
   end.
+
+index_query({IName, ITable, IColumn}) ->
+  INameStr = atom_to_list(IName),
+  ITableStr = atom_to_list(ITable),
+  IColumnStr = atom_to_list(IColumn),
+  lists:append(["CREATE INDEX ", INameStr, " ON ", ITableStr, "(", IColumnStr , ");"]).
