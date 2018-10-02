@@ -26,7 +26,7 @@
 new(Id) ->
   Actors = basho_bench_config:get(aql_actors, []),
   Shell = basho_bench_config:get(aql_shell, "aql"),
-  Population = basho_bench_config:get(population, 500),
+  Population = basho_bench_config:get(population, 0),
   Ip = lists:nth((Id rem length(Actors)+1), Actors),
   AQLNodeStr = lists:concat([Shell, "@", Ip]),
   AQLNode = list_to_atom(AQLNodeStr),
@@ -40,7 +40,7 @@ new(Id) ->
       %start_application(AQLNode),
 
       TxId = begin_transaction(AQLNode),
-      create_schema(AQLNode, TxId),
+      create_schema(Id, AQLNode, TxId),
       
       {Galleries, Artists, ArtWorks} =
         case Population of
@@ -148,7 +148,7 @@ begin_transaction(AQLNode) ->
 commit_transaction(AQLNode, TxId) ->
   {ok, _, _} = exec(AQLNode, "COMMIT TRANSACTION;", TxId).
 
-create_schema(AQLNode, TxId) ->
+create_schema(1, AQLNode, TxId) ->
   {GalleryTPolicy, _, _} =
     to_string(basho_bench_config:get(gallery_crp, {?UPDATE_WINS, undefined, undefined})),
   {ArtistTPolicy, ArtistDepPolicy, ArtistCascade} =
@@ -174,8 +174,11 @@ create_schema(AQLNode, TxId) ->
   Indexes = basho_bench_config:get(indexes, []),
   lists:foreach(fun(IndexSpec) ->
     IndexQuery = index_query(IndexSpec),
+    lager:info("Created index: ~p", [IndexQuery]),
     exec(AQLNode, IndexQuery, TxId)
-  end, Indexes).
+  end, Indexes);
+create_schema(_Id, _AQLNode, _TxId) ->
+  ok.
 
   %IndexAlbumQuery = "CREATE INDEX ArtistIdx ON Album(Artist);",
   %IndexTrackQuery = "CREATE INDEX AlbumIdx ON Track(Album);",
@@ -196,6 +199,9 @@ populate_db(Id, Population, AQLNode, TxId) ->
 		case exec(AQLNode, Query, TxId) of
 		  {ok, _} ->
 		    put_value(Table, Key, Galleries, Artists, ArtWorks);
+      {ok, [{error, Msg}], _} ->
+        lager:error("Error while populating: ~p", [Msg]),
+        {Galleries, Artists, ArtWorks};
 		  {ok, _, _} ->
 		  	put_value(Table, Key, Galleries, Artists, ArtWorks);
 		  {error, _Err} = Error ->

@@ -26,7 +26,7 @@
 new(Id) ->
   Actors = basho_bench_config:get(aql_actors, []),
   Shell = basho_bench_config:get(aql_shell, "aql"),
-  Population = basho_bench_config:get(population, 500),
+  Population = basho_bench_config:get(population, 0),
   Ip = lists:nth((Id rem length(Actors)+1), Actors),
   AQLNodeStr = lists:concat([Shell, "@", Ip]),
   AQLNode = list_to_atom(AQLNodeStr),
@@ -40,7 +40,7 @@ new(Id) ->
       %start_application(AQLNode),
 
       TxId = begin_transaction(AQLNode),
-      create_schema(AQLNode, TxId),
+      create_schema(Id, AQLNode, TxId),
       
       Artists =
         case Population of
@@ -179,17 +179,20 @@ begin_transaction(AQLNode) ->
 commit_transaction(AQLNode, TxId) ->
   {ok, _, _} = exec(AQLNode, "COMMIT TRANSACTION;", TxId).
 
-create_schema(AQLNode, TxId) ->
+create_schema(1, AQLNode, TxId) ->
   TableQuery = "CREATE UPDATE-WINS TABLE Artist (Name VARCHAR PRIMARY KEY, Age INTEGER);",
   exec(AQLNode, TableQuery, TxId),
 
   case basho_bench_config:get(sec_indexes, false) of
     true ->
       IndexQuery = "CREATE INDEX AgeIdx ON Artist (Age)",
+      lager:info("Created index: ~p", [IndexQuery]),
       exec(AQLNode, IndexQuery, TxId);
     _ ->
       ok
-  end.
+  end;
+create_schema(_Id, _AQLNode, _TxId) ->
+  ok.
 
 populate_db(Id, Population, AQLNode, TxId) ->
 	KeyGen = basho_bench_keygen:new(basho_bench_config:get(key_generator), Id),
@@ -204,6 +207,9 @@ populate_db(Id, Population, AQLNode, TxId) ->
 		case exec(AQLNode, Query, TxId) of
 		  {ok, _} ->
 		    put_value({Key, Value}, Artists);
+      {ok, [{error, Msg}], _} ->
+        lager:error("Error while populating: ~p", [Msg]),
+        Artists;
 		  {ok, _, _} ->
 		  	put_value({Key, Value}, Artists);
 		  {error, _Err} = Error ->

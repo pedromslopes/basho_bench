@@ -26,7 +26,7 @@
 new(Id) ->
   Actors = basho_bench_config:get(aql_actors, []),
   Shell = basho_bench_config:get(aql_shell, "aql"),
-  Population = basho_bench_config:get(population, 500),
+  Population = basho_bench_config:get(population, 0),
   Ip = lists:nth((Id rem length(Actors)+1), Actors),
   AQLNodeStr = lists:concat([Shell, "@", Ip]),
   AQLNode = list_to_atom(AQLNodeStr),
@@ -40,7 +40,7 @@ new(Id) ->
       %start_application(AQLNode),
 
       TxId = begin_transaction(AQLNode),
-      create_schema(AQLNode, TxId),
+      create_schema(Id, AQLNode, TxId),
       
       Artists =
         case Population of
@@ -142,13 +142,15 @@ begin_transaction(AQLNode) ->
 commit_transaction(AQLNode, TxId) ->
   {ok, _, _} = exec(AQLNode, "COMMIT TRANSACTION;", TxId).
 
-create_schema(AQLNode, TxId) ->
+create_schema(1, AQLNode, TxId) ->
   Partitions = basho_bench_config:get(partitions, []),
 
   ArtistQuery = "CREATE UPDATE-WINS TABLE Artist (Name VARCHAR PRIMARY KEY, Age INTEGER) " ++
     partition_to_string('Artist', Partitions) ++ ";",
 
-  exec(AQLNode, ArtistQuery, TxId).
+  exec(AQLNode, ArtistQuery, TxId);
+create_schema(_Id, _AQLNode, _TxId) ->
+  ok.
 
   %IndexAlbumQuery = "CREATE INDEX ArtistIdx ON Album(Artist);",
   %IndexTrackQuery = "CREATE INDEX AlbumIdx ON Track(Album);",
